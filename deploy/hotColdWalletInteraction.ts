@@ -1,6 +1,5 @@
 import { utils, Wallet, Provider, Contract, EIP712Signer, types, ECDSASmartAccount } from "zksync-ethers";
 import * as ethers from "ethers";
-import BigNumber from "ethers";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 
 // load env file
@@ -108,10 +107,8 @@ export default async function (hre: HardhatRuntimeEnvironment) {
       gasPrice: gasPrice,
   };
 
+
   // Encode the transaction hash
-
-  const signedTxHash = EIP712Signer.getSignedDigest(transaction);
-
   const txHash = ethers.keccak256(abiCoder.encode(
       ['address', 'uint256', 'bytes', 'uint256', 'uint256'],
       [transaction.to, transaction.value, transaction.data, transaction.nonce, transaction.gasLimit, transaction.gasPrice]
@@ -119,14 +116,14 @@ export default async function (hre: HardhatRuntimeEnvironment) {
 
 
   // Sign the transaction hash with hot wallet
-  const hotWalletSignature = await hotWallet.signMessage(ethers.arrayify(txHash));
+  const hotWalletSignature = await hotWallet.signMessage(utils.arrayify(txHash));
   const modifiedSignature = '0x00' + hotWalletSignature.slice(2); // Add prefix for hot wallet
 
 
   // Construct transaction with the new signature format
   const signedTransaction = {
-      ...transaction,
-      signature: modifiedSignature
+    ...transaction,
+    signature: modifiedSignature
   };
 
 
