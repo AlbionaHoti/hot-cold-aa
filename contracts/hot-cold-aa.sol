@@ -15,17 +15,62 @@ import "@matterlabs/zksync-contracts/l2/system-contracts/Constants.sol";
 // to call non-view function of system contracts
 import "@matterlabs/zksync-contracts/l2/system-contracts/libraries/SystemContractsCaller.sol";
 
-contract HotColdMultiSig is IAccount, IERC1271 {
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+
+contract HotColdAA is IAccount, IERC1271, Ownable {
     // to get transaction hash
     using TransactionHelper for Transaction;
 
-    // state variables for account owners
-    address public owner1;
-    address public owner2;
+    // setting the limit to 24 hr
+    uint public ONE_DAY = 1 minutes;
 
-    constructor(address _owner1, address _owner2) {
-        owner1 = _owner1;
-        owner2 = _owner2;
+    // state variables for account owners
+    address public hotWallet;
+    address public coldWallet;
+    uint256 public maxValue;
+
+    constructor(address _hotWallet, address _coldWallet, uint256 _maxValue) {
+        hotWallet = _hotWallet;
+        coldWallet = _coldWallet;
+        maxValue = _maxValue
+    }
+
+    // A new struct that serves as data storage of hot wallet daily spending limits users enable
+    // limit: the amount of a daily spending limit
+    // available: the available amount that can be spent
+    // resetTime: block.timestamp at the available amount is restored
+    // isEnabled: true when a daily spending limit is enabled
+
+    struct LimitTimeSpending {
+        // comments for the hot and cold wallet
+        uint limit; // the actual restriction
+        uint available; // checking the amount of money available?
+        uint resetTime; // we need this to reset the daily limit timing
+        bool isEnabled; // I don't need this, bc we're not enabling limit, the restriction will happen directly
+    }
+
+    mapping(address => LimitTimeSpending) public limits; // token => Limit, we're mapping the address 
+    // Note that the limits mapping uses the token address as its key. This means that users can set limits for ETH and any other ERC20 token.
+
+
+    // TODO: check with Vlad ->
+    /*
+            Slots of type keccak256(A || X) on any other address. 
+            (to cover mapping(address => value), which is usually used for balance in ERC20 tokens).
+            -> I want to check the balance of ETH only transactions, so this AA will only limit the ETH token spending.
+
+            - Is this mapping okay -> since `limits` will be used uder the checkRestrictions which is called from isValidSignature
+     */
+
+    
+    // TODO: check with Vlad on the usage of this one
+    modifier onlyAccount() {
+        require(
+            msg.sender == address(this),
+            "Only the account that inherits this contract can call this method."
+        );
+        _;
     }
 
     /*
@@ -86,7 +131,27 @@ contract HotColdMultiSig is IAccount, IERC1271 {
             abi.encodeCall(INonceHolder.incrementMinNonceIfEquals, (_transaction.nonce))
             
         );
+        /**
 
+         - problem statement: which wallet is signing the transaction ->
+            - receiving different tx from different wallets -> based on the wallet we give more functionalities
+                - bruto force recovery of each wallet 
+                    1. lets try if its cold wallet -> verification succeed? -> recover
+                    2.   else: hot wallet
+                    3. If its neither -> reject   
+
+                - provide hint to calldata
+                    1. use 1 byte to the calldata -> to see if its hot or cold wallet
+                       -> one small byte somewhere to store that will provide a hint for the wallet on what to do
+
+                - how to use one byte from signature -> 
+                    1. on the validation of the transaction 
+
+                - signature byte: first byte determines what is the signer, other bytes ...
+
+                
+
+         */
         bytes32 txHash;
         // While the suggested signed hash is usually provided, it is generally
         // not recommended to rely on it to be present, since in the future there
@@ -124,6 +189,12 @@ contract HotColdMultiSig is IAccount, IERC1271 {
         address to = address(uint160(_transaction.to));
         uint128 value = Utils.safeCastToU128(_transaction.value);
         bytes memory data = _transaction.data;
+
+        // TODO: Check with Vlad if we need to check on here, or just when we validate the transaction -> that's where we pass it to be executed?
+        // Spending limit tutorial: Call SpendLimit contract to ensure that ETH `value` doesn't exceed the daily spending limit
+        if (value > 0) {
+            _checkSpendingLimit(address(ETH_TOKEN_SYSTEM_CONTRACT), value);
+        }
 
         if (to == address(DEPLOYER_SYSTEM_CONTRACT)) {
             uint32 gas = Utils.safeCastToU32(gasleft());
@@ -166,33 +237,189 @@ contract HotColdMultiSig is IAccount, IERC1271 {
 
             magic = EIP1271_SUCCESS_RETURN_VALUE;
 
-            if (_signature.length != 130) {
+            // we def need to verify -> signature corresponds to one of the wallets -> if we get a random sig, the wallet should not accept it
+
+            if (_signature.length != 65) {
+                // we will have one signature to receive
+
                 // Signature is invalid, but we need to proceed with the signature verification as usual
                 // in order for the fee estimation to work correctly
-                _signature = new bytes(130);
+                _signature = new bytes(65);
 
                 // Making sure that the signature looks like a valid ECDSA signature and we're not rejected
                 // rightaway while skipping the main verification process
                 _signature[64] = bytes1(uint8(27));
-                _signature[129] = bytes1(uint8(27));
             }
 
-            (bytes memory signature1, bytes memory signature2) = extractECDSASignature(_signature);
+            // (bytes memory signature) = extractECDSASignature(_signature);
 
-            if(!checkValidEDCSASignatureFormat(signature1) || !checkValidECDSASignatureFormat(signature2)) {
+            // we need to extract the type of the signer
+            // we don't need this one, we just need to check if the sig is length 65, that's enough -> TODO: delete this later
+            // (bytes memory signature, uint8 signerType) = extractECDSASignature(_signature);
+
+
+            // signerType
+
+            // if we don't check this one, 65 bytes of the signature -> if we allow big signature lengths, and we verify that
+            // it's pretty bad, as a user you send tx as a user, and someone can modify the signature to do smth more on your wallet
+            // limited attack -> provide bigger signatuers, and bootloader will accept these sigtures -> force you to spend more gas
+            // you send a tx, you have a tx hash (metamask will have it) -> the final tx is not matching, for user...
+
+            if(!checkValidECDSASignatureFormat(signature)) {
                 magic = bytes4(0);
             }
 
-            address recoveredAddr1 = ECDSA.recover(_hash, signature1);
-            address recoveredAddr2 = EDCSA.recover(_hash, signature2);
+            address recoveredAddr = ECDSA.recover(_hash, signature); // by this one we will know who signed the tx
+            // address can mean that there's a private key <-> address -> cold wallet and hot wallet, just addresses
+            // that sign messages
+
+            // address recoveredAddr2 = EDCSA.recover(_hash, signature2);
 
             // Note, that we should abstrain from using the required here in order to allow for fee estimation to work
 
-            if(recoveredAddr1 != owner1 || recoveredAddr2 != owner2) {
+            // compare the recoveredAdd if its cold or hot wallet
+            // compare the recoveredAdd to the hot wallet -> it will return me an address that signed the tx ->
+            
+            // what call we want to have in the code -> GOAL: what wallet signs the message?
+
+            if (recoveredAddr == hotWallet) {
+                // a func -> we don't need to know in advance ->
+                checkRestrictions(_transaction);
+            } 
+
+            // a func -> base behavior -> they can do whatever
+          
+
+            if(recoveredAddr != hotWallet && recoveredAddr != coldWallet) {
                 magic = bytes4(0)
             }
 
         }
+
+     // Function to check transaction restrictions
+    function checkRestrictions(Transaction calldata _transaction) external view {
+        require(_transaction.value <= maxValue, "Transaction value exceeds the maximum allowed limit.");
+    }
+
+     // Function to update the maximum allowed value for transactions
+    function setMaxValue(uint256 _newMaxValue) external onlyOwner {
+        maxValue = _newMaxValue;
+    }
+
+    // function checkRestrictions(Transaction calldata _transaction) internal {
+
+    //     // get the value that is passed with that transaction to add restrictions
+    //     // I need a daily spending restriction for the hot wallet
+
+    //     uint amount = _transaction.value;
+    //     require(amount != 0, "Invalid amount");
+
+    //     // see the daily spending limit and use it here
+
+    //     // split it into logical parts
+
+    //     // TODO: Restrict the value X
+
+    //     Limit memory limit = limits[_token];
+
+    //     // return if spending limit hasn't been enabled yet
+    //     // if (!limit.isEnabled) return;
+
+    //     uint timestamp = block.timestamp; // L2 block timestamp, to limit the daily spend on the hot wallet
+
+        
+
+    //     // TODO: from the docs, it's stated the below -> check with Vlad
+    //     /*
+    //         * The account logic can not use context variables (e.g. block.number).
+    //           - does this mean that I need to call the checkRestrictions from the executeTransaction step, and not the isValidSignature step? 
+         
+    //         * I think I need this check:
+    //             - Reverts unless it is first spending after enabling
+    //               or called after 24 hours have passed since the last update.
+        
+    //     if (limits[_token].isEnabled) {
+    //         require(
+    //             limits[_token].limit == limits[_token].available ||
+    //                 block.timestamp > limits[_token].resetTime,
+    //             "Invalid Update"
+    //         );
+
+    //         return true;
+    //     } else {
+    //         return false;
+    //     }
+    //      */
+
+    //     // Renew resetTime and available amount, which is only performed
+    //     // if a day has already passed since the last update: timestamp > resetTime
+    //     // if (limit.limit != limit.available && timestamp > limit.resetTime) {
+    //     //     limit.resetTime = timestamp + ONE_DAY;
+    //     //     limit.available = limit.limit;
+
+    //     //     // Or only resetTime is updated if it's the first spending after enabling limit
+    //     // } else if (limit.limit == limit.available) {
+    //     //     limit.resetTime = timestamp + ONE_DAY;
+    //     // }
+
+    //     // // reverts if the amount exceeds the remaining available amount.
+    //     // require(limit.available >= _amount, "Exceed daily limit");
+
+    //     // // decrement `available`
+    //     // limit.available -= _amount;
+    //     // limits[_token] = limit;
+
+    //     // _updateLimit(_amount, _amount, resetTime, true);
+
+    //     // magic = bytes4(0)
+
+    // }
+
+    
+    // storage-modifying private function called by either setSpendingLimit or removeSpendingLimit (in our case: checkRestrictions)
+    // function _updateLimit(
+    //     address _token,
+    //     uint _limit,
+    //     uint _available,
+    //     uint _resetTime,
+    //     bool _isEnabled
+    // ) private {
+    //     Limit storage limit = limits[_token];
+    //     limit.limit = _limit;
+    //     limit.available = _available;
+    //     limit.resetTime = _resetTime;
+    //     limit.isEnabled = _isEnabled;
+    // }
+
+
+    // this function is called by the account before execution.
+    // 
+    function _checkSpendingLimit(address _token, uint _amount) internal {
+        Limit memory limit = limits[_token];
+
+        // return if spending limit hasn't been enabled yet
+        if (!limit.isEnabled) return;
+
+        uint timestamp = block.timestamp; // L2 block timestamp
+
+        // Renew resetTime and available amount, which is only performed
+        // if a day has already passed since the last update: timestamp > resetTime
+        if (limit.limit != limit.available && timestamp > limit.resetTime) {
+            limit.resetTime = timestamp + ONE_DAY;
+            limit.available = limit.limit;
+
+            // Or only resetTime is updated if it's the first spending after enabling limit
+        } else if (limit.limit == limit.available) {
+            limit.resetTime = timestamp + ONE_DAY;
+        }
+
+        // reverts if the amount exceeds the remaining available amount.
+        require(limit.available >= _amount, "Exceed daily limit");
+
+        // decrement `available`
+        limit.available -= _amount;
+        limits[_token] = limit;
+    }
     
     function payForTransaction (
         bytes32,
