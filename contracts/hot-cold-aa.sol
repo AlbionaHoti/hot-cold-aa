@@ -30,7 +30,6 @@ contract HotColdAA is IAccount, IERC1271 {
         maxValue = _maxValue;
     }
 
-
     // TODO: check with Vlad on the usage of this one
     modifier onlyAccount() {
         require(msg.sender == address(this), "Only the account that inherits this contract can call this method.");
@@ -80,15 +79,15 @@ contract HotColdAA is IAccount, IERC1271 {
         );
 
         /**
-            problem statement: which wallet is signing the transaction?
-            1. We will receive different tx from different wallets. Based on the wallet, we give more functionality to the owner
-            How:
-            1. We'll provide more hints to calldata
-                - Using the first 1 byte to the calldata, to check if its a hot or cold wallet
-                - The first 1 byte will provide a hint for the wallet on what to do
-            2. How to use the one byte from signature? 
-                - We can check on the validation of the transaction
-                - signature byte: first byte determines what is the signer, other bytes ...
+         * problem statement: which wallet is signing the transaction?
+         *         1. We will receive different tx from different wallets. Based on the wallet, we give more functionality to the owner
+         *         How:
+         *         1. We'll provide more hints to calldata
+         *             - Using the first 1 byte to the calldata, to check if its a hot or cold wallet
+         *             - The first 1 byte will provide a hint for the wallet on what to do
+         *         2. How to use the one byte from signature? 
+         *             - We can check on the validation of the transaction
+         *             - signature byte: first byte determines what is the signer, other bytes ...
          */
         bytes32 txHash;
         // While the suggested signed hash is usually provided, it is generally
@@ -281,7 +280,6 @@ contract HotColdAA is IAccount, IERC1271 {
 
         return true;
     }
-
 
     fallback() external {
         // fallback of default account shouldn't be called by bootloader under no circumstances
