@@ -16,7 +16,7 @@ dotenv.config();
 */
 
 // Put the address of your AA factory
-const AA_FACTORY_ADDRESS = "0xA0aE477D79AA21c4EE156cDfDA37dE0b5ac296B0";
+const AA_FACTORY_ADDRESS = "0x91f7265d420Ed43a329E1C093a6dAaE78D138C12";
 
 // load the values into .env file after deploying the FactoryAccount
 const DEPLOYED_ACCOUNT_OWNER_PRIVATE_KEY = process.env.DEPLOYED_ACCOUNT_OWNER_PRIVATE_KEY || "";
@@ -43,7 +43,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
   const salt = ethers.ZeroHash;
 
   // deploy account owned by one owner but with two wallets, hot and cold wallet
-  const tx = await aaFactory.deployAccount(salt, hotWallet, coldWallet);
+  const tx = await aaFactory.deployAccount(salt, hotWallet, coldWallet, 0);
   await tx.wait();
 
   // Getting the address of the deployed contract account
@@ -55,7 +55,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
     AA_FACTORY_ADDRESS,
     await aaFactory.aaBytecodeHash(),
     salt,
-    abiCoder.encode(["account", "account"], [hotWallet.address, coldWallet.address])
+    abiCoder.encode(["address", "address", "uint256"], [hotWallet.address, coldWallet.address, 0])
   );
 
   console.log(`HotCold account deployed on address: ${hotColdAddress}`);
