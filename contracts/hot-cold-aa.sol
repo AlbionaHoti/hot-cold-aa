@@ -30,12 +30,6 @@ contract HotColdAA is IAccount, IERC1271 {
         maxValue = _maxValue;
     }
 
-    // TODO: check with Vlad on the usage of this one
-    modifier onlyAccount() {
-        require(msg.sender == address(this), "Only the account that inherits this contract can call this method.");
-        _;
-    }
-
     // bytes4 -> dinamically sized byte array
     bytes4 constant EIP1271_SUCCESS_RETURN_VALUE = 0x1626ba7e;
 
@@ -79,15 +73,11 @@ contract HotColdAA is IAccount, IERC1271 {
         );
 
         /**
-         * problem statement: which wallet is signing the transaction?
-         *         1. We will receive different tx from different wallets. Based on the wallet, we give more functionality to the owner
-         *         How:
-         *         1. We'll provide more hints to calldata
-         *             - Using the first 1 byte to the calldata, to check if its a hot or cold wallet
-         *             - The first 1 byte will provide a hint for the wallet on what to do
-         *         2. How to use the one byte from signature? 
-         *             - We can check on the validation of the transaction
-         *             - signature byte: first byte determines what is the signer, other bytes ...
+         * On _validateTransaction we're
+         *  1. Checking if the transaction is valid
+         *  2. Nonce is incremented
+         *  3. Check if balance is enough for the transaction
+         *  4. Use the first byte of the signature to determine the type of the wallet
          */
         bytes32 txHash;
         // While the suggested signed hash is usually provided, it is generally
@@ -154,26 +144,21 @@ contract HotColdAA is IAccount, IERC1271 {
     }
 
     function executeTransactionFromOutside(Transaction calldata _transaction) external payable {
-        /*
-                This function allows external users to initiate transactions from this account.
-
-                We implement it by calling:
-                1. validateTransaction
-                2. executeTransaction
-             */
-        bytes4 magic = _validateTransaction(bytes32(0), _transaction);
-        require(magic == ACCOUNT_VALIDATION_SUCCESS_MAGIC, "NOT VALIDATED");
-
-        _executeTransaction(_transaction);
+        revert("Not implemented");        
     }
 
     function isValidSignature(bytes32 _hash, bytes memory _signature) public view override returns (bytes4 magic) {
-        // TO BE IMPLEMENTED
 
         magic = EIP1271_SUCCESS_RETURN_VALUE;
         // COMMENT: Provide data on why we're using this format.
+        /**
+         * 
+         *  The signature format is `abi.encodePacked(bytes1 authorisationFrom, 
+         *  bytes memory ecdsaSignature)` where `authorisationFrom == bytes1(0)` 
+         *  if transaction is authorised from hot wallet and `authorisationFrom != bytes1(0)` 
+         *  if authorised from cold wallet.
+        */
 
-        // we def need to verify -> signature corresponds to one of the wallets -> if we get a random sig, the wallet should not accept it
 
         /*
             Signature Validation Steps
@@ -181,7 +166,6 @@ contract HotColdAA is IAccount, IERC1271 {
             2. Check if the signatures are in the correct format using the helper function 
                 `checkValidEDCSASignatureFormat`
             3. We use EDCSASignatureFormat helper function, to check if the signature is in the correct format and is non-malleable.
-            4. 
         
          */
         if (_signature.length != 66) {
@@ -191,22 +175,23 @@ contract HotColdAA is IAccount, IERC1271 {
 
             // Making sure that the signature looks like a valid ECDSA signature and we're not rejected
             // rightaway while skipping the main verification process
-            // TODO: since we moved forward the signature by one, change this as well
-            _signature[65] = bytes1(uint8(27));
+            _signature[65] = bytes1(uint8(28));
         }
 
         if (!checkValidECDSASignatureFormat(_signature)) {
             magic = bytes4(0);
         }
 
-        address recoveredAddr = ECDSA.recover(_hash, _signature); // by this one we will know who signed the tx
+        address recoveredAddr = ECDSA.recover(_hash, _signature[1:]); // by this one we will know who signed the tx
 
         if (_signature[0] == 0) {
             if (recoveredAddr != hotWallet) {
                 magic = bytes4(0);
             }
         } else {
-            magic = bytes4(0);
+            if (recoveredAddr != coldWallet) {
+                 magic = bytes4(0);
+            }
         }
     }
 
