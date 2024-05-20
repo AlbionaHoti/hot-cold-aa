@@ -42,7 +42,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
   const salt = ethers.ZeroHash;
 
   // deploy account owned by one owner but with two wallets, hot and cold wallet
-  const tx = await aaFactory.deployAccount(salt, hotWallet, coldWallet, maxValue);
+  const tx = await aaFactory.deployAccount(salt, hotWallet.address, coldWallet.address, maxValue);
   await tx.wait();
 
   // Getting the address of the deployed contract account
