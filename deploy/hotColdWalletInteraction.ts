@@ -65,7 +65,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
     await wallet.sendTransaction({
       to: hotColdAddress,
       // You can increase the amount of ETH sent to the HotCold
-      value: ethers.parseEther("0.01"),
+      value: ethers.parseEther("0.1"),
       nonce: await wallet.getNonce(),
     })
   ).wait();
@@ -98,40 +98,59 @@ export default async function (hre: HardhatRuntimeEnvironment) {
 
   // Create a transaction object
   transaction = {
+      from: hotColdAddress,
       to,
       value,
       data,
-      nonce: await provider.getTransactionCount(hotWallet.address),
+      nonce: await provider.getTransactionCount(hotColdAddress),
       gasLimit: gasLimit,
       gasPrice: gasPrice,
+      customData: {
+        gasPerPubdata: utils.DEFAULT_GAS_PER_PUBDATA_LIMIT,
+      } as types.Eip712Meta,
   };
 
 
+  const signedTxHash = EIP712Signer.getSignedDigest(transaction);
+
   // Encode the transaction hash
-  const txHash = ethers.keccak256(abiCoder.encode(
-      ['address', 'uint256', 'bytes', 'uint256', 'uint256'],
-      [transaction.to, transaction.value, transaction.data, transaction.nonce, transaction.gasLimit, transaction.gasPrice]
-  ));
+  // const txHash = ethers.keccak256(abiCoder.encode(
+  //     ['address', 'uint256', 'bytes', 'uint256', 'uint256'],
+  //     [transaction.to, transaction.value, transaction.data, transaction.nonce, transaction.gasLimit, transaction.gasPrice]
+  // ));
 
 
   // Sign the transaction hash with hot wallet
-  const hotWalletSignature = await hotWallet.signMessage(ethers.utils.arrayify(txHash));
+  const hotWalletSignature = await hotWallet.signMessage(ethers.utils.arrayify(signedTxHash));
   const modifiedSignature = '0x00' + hotWalletSignature.slice(2); // Add prefix for hot wallet
 
-
+  console.log('Lets see the hotWalletSignature:', hotWalletSignature);
   // Construct transaction with the new signature format
   const signedTransaction = {
     ...transaction,
     signature: modifiedSignature
   };
 
+  console.log(`The multisig's nonce before the first tx is ${await provider.getTransactionCount(hotColdAddress)}`);
 
+  const sentTx = await provider.broadcastTransaction(types.Transaction.from(transaction).serialized);
+  console.log(`Transaction sent from multisig with hash ${sentTx.hash}`);
+
+  await sentTx.wait();
+
+
+  // Checking that the nonce for the account has increased
+  console.log(`The multisig's nonce after the first tx is ${await provider.getTransactionCount(hotColdAddress)}`);
+
+  hotColdBalance = await provider.getBalance(hotColdAddress);
+
+  console.log(`Multisig account balance is now ${hotColdBalance.toString()}`);
   // Send the transaction
-  const txResponse = await hotWallet.sendTransaction(signedTransaction);
-  console.log('Transaction Hash:', txResponse.hash);
+//   const txResponse = await hotWallet.sendTransaction(signedTransaction);
+//   console.log('Transaction Hash:', txResponse.hash);
 
- // Wait for transaction confirmation
-  const receipt = await txResponse.wait();
-  console.log('Transaction Receipt:', receipt);
+//  // Wait for transaction confirmation
+//   const receipt = await txResponse.wait();
+//   console.log('Transaction Receipt:', receipt);
 
 }
