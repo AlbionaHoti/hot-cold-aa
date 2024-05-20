@@ -182,7 +182,19 @@ contract HotColdAA is IAccount, IERC1271 {
             magic = bytes4(0);
         }
 
-        address recoveredAddr = ECDSA.recover(_hash, _signature[1:]); // by this one we will know who signed the tx
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+        // Signature loading code
+        // we jump 33 (0x21) as the first slot of bytes contain the length
+        // we jump 66 (0x42)
+        // for v we load 32 bytes ending with v (the first 31 come from s) then apply a mask
+        assembly {
+            r := mload(add(_signature, 0x21))
+            s := mload(add(_signature, 0x41))
+            v := and(mload(add(_signature, 0x42)), 0xff)
+        }
+        address recoveredAddr = ECDSA.recover(_hash, v, r, s); // by this one we will know who signed the tx
 
         if (_signature[0] == 0) {
             if (recoveredAddr != hotWallet) {
