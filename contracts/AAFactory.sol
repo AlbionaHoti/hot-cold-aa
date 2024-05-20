@@ -11,14 +11,14 @@ contract AAFactory {
         aaBytecodeHash = _aaBytecodeHash;
     }
 
-    function deployAccount(bytes32 salt, address owner) external returns (address accountAddress) {
+    function deployAccount(bytes32 salt, address hotWallet, address coldWallet) external returns (address accountAddress) {
         (bool success, bytes memory returnData) = SystemContractsCaller.systemCallWithReturndata(
             uint32(gasleft()),
             address(DEPLOYER_SYSTEM_CONTRACT),
             uint128(0),
             abi.encodeCall(
                 DEPLOYER_SYSTEM_CONTRACT.create2Account,
-                (salt, aaBytecodeHash, abi.encode(owner), IContractDeployer.AccountAbstractionVersion.Version1)
+                (salt, aaBytecodeHash, abi.encode(hotWallet, coldWallet), IContractDeployer.AccountAbstractionVersion.Version1)
             )
         );
         require(success, "Deployment failed!");
