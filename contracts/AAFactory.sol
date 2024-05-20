@@ -18,7 +18,7 @@ contract AAFactory {
             uint128(0),
             abi.encodeCall(
                 DEPLOYER_SYSTEM_CONTRACT.create2Account,
-                (salt, aaBytecodeHash, abi.encode(hotWallet, coldWallet), IContractDeployer.AccountAbstractionVersion.Version1)
+                (salt, aaBytecodeHash, abi.encode(hotWallet, coldWallet, maxValue), IContractDeployer.AccountAbstractionVersion.Version1)
             )
         );
         require(success, "Deployment failed!");
