@@ -1,11 +1,9 @@
 import { utils, Wallet } from "zksync-ethers";
-import * as ethers from "ethers";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { Deployer } from "@matterlabs/hardhat-zksync-deploy";
 
 
 import dotenv from "dotenv";
-import { util } from "chai";
 dotenv.config();
 const WALLET_PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY || "";
 

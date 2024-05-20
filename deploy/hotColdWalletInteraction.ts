@@ -16,12 +16,10 @@ dotenv.config();
 */
 
 // Put the address of your AA factory
-const AA_FACTORY_ADDRESS = "0x91f7265d420Ed43a329E1C093a6dAaE78D138C12";
+const AA_FACTORY_ADDRESS = "0x6B33B6b277E74C3d8E6Ed9D47867e288b51bD5b2";
 
 // load the values into .env file after deploying the FactoryAccount
 const DEPLOYED_ACCOUNT_OWNER_PRIVATE_KEY = process.env.DEPLOYED_ACCOUNT_OWNER_PRIVATE_KEY || "";
-const ETH_ADDRESS = process.env.ETH_ADDRESS || "0x000000000000000000000000000000000000800A";
-const ACCOUNT_ADDRESS = process.env.DEPLOYED_ACCOUNT_ADDRESS || "";
 
 export default async function (hre: HardhatRuntimeEnvironment) {
   // @ts-ignore target zkSyncSepoliaTestnet in config file which can be testnet or local
@@ -38,12 +36,13 @@ export default async function (hre: HardhatRuntimeEnvironment) {
   const coldWalletPrivateKey = Wallet.createRandom().privateKey;
   const hotWallet = new Wallet(hotWalletPrivateKey, provider);
   const coldWallet = new Wallet(coldWalletPrivateKey, provider);
+  const maxValue = 0;
 
   // For the simplicity of the tutorial, we will use zero hash as salt
   const salt = ethers.ZeroHash;
 
   // deploy account owned by one owner but with two wallets, hot and cold wallet
-  const tx = await aaFactory.deployAccount(salt, hotWallet, coldWallet, 0);
+  const tx = await aaFactory.deployAccount(salt, hotWallet, coldWallet, maxValue);
   await tx.wait();
 
   // Getting the address of the deployed contract account
@@ -55,7 +54,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
     AA_FACTORY_ADDRESS,
     await aaFactory.aaBytecodeHash(),
     salt,
-    abiCoder.encode(["address", "address", "uint256"], [hotWallet.address, coldWallet.address, 0])
+    abiCoder.encode(["address", "address", "uint256"], [hotWallet.address, coldWallet.address, maxValue])
   );
 
   console.log(`HotCold account deployed on address: ${hotColdAddress}`);
@@ -66,7 +65,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
     await wallet.sendTransaction({
       to: hotColdAddress,
       // You can increase the amount of ETH sent to the HotCold
-      value: ethers.parseEther("0.001"),
+      value: ethers.parseEther("0.01"),
       nonce: await wallet.getNonce(),
     })
   ).wait();
@@ -80,7 +79,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
 
 
   // Define transaction parameters
-  const to = 'recipient-address';
+  const to = '0x8c9ECFC749Cf2C0b0f12728c5220f6E3dC90F6c2';
   const value = ethers.parseEther('0.01'); // Value in ETH
   const data = '0x'; // Optional data field
 
@@ -89,8 +88,8 @@ export default async function (hre: HardhatRuntimeEnvironment) {
   let transaction = await aaFactory.deployAccount.populateTransaction(
     salt,
     // These are accounts that will own the newly deployed account
-    hotWallet.address,
-    coldWallet.address
+    Wallet.createRandom().address,
+    Wallet.createRandom().address
   );
 
 
@@ -116,7 +115,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
 
 
   // Sign the transaction hash with hot wallet
-  const hotWalletSignature = await hotWallet.signMessage(utils.arrayify(txHash));
+  const hotWalletSignature = await hotWallet.signMessage(ethers.utils.arrayify(txHash));
   const modifiedSignature = '0x00' + hotWalletSignature.slice(2); // Add prefix for hot wallet
 
 
