@@ -11,7 +11,7 @@ contract AAFactory {
         aaBytecodeHash = _aaBytecodeHash;
     }
 
-    function deployAccount(bytes32 salt, address hotWallet, address coldWallet) external returns (address accountAddress) {
+    function deployAccount(bytes32 salt, address hotWallet, address coldWallet, uint256 maxValue) external returns (address accountAddress) {
         (bool success, bytes memory returnData) = SystemContractsCaller.systemCallWithReturndata(
             uint32(gasleft()),
             address(DEPLOYER_SYSTEM_CONTRACT),
